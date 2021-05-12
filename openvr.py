@@ -348,6 +348,7 @@ class State(Enum):
     IDLE = 1
     #DECISIONAL = 2
     CONTROL_PIN = 2
+    CONTROL_ARROW = 17
     INTERACTION_LOCAL = 3
     NAVIGATION_ENTER = 4
     NAVIGATION = 5
@@ -472,7 +473,7 @@ class OpenVR(HMD_Base):
         self.ctrl_index_r, self.ctrl_index_l, self.tracker_index, self.hmd_index = self.findControllers(vrSys)
 
         ####AT THE MOEMNT
-        # self.ctrl_index_r = 2
+        #self.ctrl_index_r = 2
         #self.ctrl_index_l = 3
 
         if bpy.data.objects.get('StrokeObj') is None:
@@ -1627,6 +1628,63 @@ class OpenVR(HMD_Base):
         if(max(weights) > 1):
             self.apply_FFD(obj, diff, shape_index_general, seed_index)
 
+    def update_shape_target(self, obj, target_index, seed_index, C):
+
+        shapekey_array = obj.data.shape_keys.key_blocks
+
+        shape_target_name = bpy.data.objects["shape_name_"+str(target_index)].data.body
+
+        d1 = self.find_distance(shapekey_array[0].data[seed_index].co,shapekey_array[shape_target_name].data[seed_index].co)
+        d2 = self.find_distance(shapekey_array[0].data[seed_index].co,C)
+
+        weight = d2/d1
+
+        print("new_weight:", weight)
+
+        if(weight <= 1):
+
+            ## pudate shape
+            i = 0
+            for v in shapekey_array["Target"+str(target_index)].data:
+
+                v_basis = shapekey_array[0].data[i].co
+
+                v_target = shapekey_array[shape_target_name].data[i].co
+
+                v.co = v_basis + (v_target - v_basis) * (d2 / d1)
+
+                i+=1
+
+        if(weight > 1):
+
+            ## pudate shape
+            i = 0
+            for v in shapekey_array["Target"+str(target_index)].data:
+
+                v_target = shapekey_array[shape_target_name].data[i].co
+
+                v.co = v_target
+
+                i+=1
+
+            #find the difference for FFD
+            seed = shapekey_array[shape_target_name].data[seed_index].co
+            diff = C - seed
+
+            # find the index of ith target and set value 1 to display
+            i = 0
+            shape_index_general = i
+            for shape in shapekey_array:
+                if (shape.name == "Target"+str(target_index)):
+                    shape_index_general = i
+                i += 1
+
+
+
+            self.apply_FFD(obj, diff, shape_index_general, seed_index)
+
+
+
     def find_shape_target_rot(self, obj, weights, seed_index, C):
 
 
@@ -2120,8 +2178,6 @@ class OpenVR(HMD_Base):
 
     def update_stroke(self, bezier_index, diff, origin_pos_B):
 
-        print("pin angle: ", self.pin_angle[bezier_index])
-
         bezier = self.stroke.data.splines[bezier_index]
 
         center = self.center_list[bezier_index]
@@ -2206,6 +2262,196 @@ class OpenVR(HMD_Base):
 
         arrow.rotation_quaternion = DirectionVector.to_track_quat('Z', 'Y')
 
+    def update_stroke_by_arrow(self, bezier_index, diff, origin_pos_C):
+
+        bezier = self.stroke.data.splines[bezier_index]
+
+        center = self.center_list[bezier_index]
+
+        # axis = self.axis_list[bezier_index]
+
+        stroke_lenght = len(bezier.bezier_points)
+
+        mid_point = int(round(stroke_lenght / 2))
+
+        pos_A = bezier.bezier_points[0].co
+        pos_B = bezier.bezier_points[mid_point].co
+        # pos_C = bezier.bezier_points[-1].co
+
+        pos_C = origin_pos_C + diff
+
+        ### UPDATE SHAPE TARGET
+        shapekey_array = self.my_obj.data.shape_keys.key_blocks
+        shape_target_name = bpy.data.objects["shape_name_"+str(bezier_index)].data.body
+        v_index = self.main_vertex_list[bezier_index]
+        v_basis = shapekey_array[0].data[v_index].co
+        v_target = shapekey_array[shape_target_name].data[v_index].co
+        d1 = self.find_distance(v_basis,v_target)
+        d2 = self.find_distance(v_basis,pos_C)
+        if(d2<d1):
+            pos_C = v_basis + (v_target - v_basis)*(d2/d1)
+
+        new_center = self.find_center(pos_A, pos_B, pos_C)
+
+        axis = self.find_axis(pos_A, pos_C, new_center)
+
+        # print(pos_A, pos_B, pos_C, new_center)
+
+        teta = self.find_teta(pos_A, pos_C, new_center, 0)
+
+        T = mathutils.Matrix.Translation(new_center)
+        Tinv = mathutils.Matrix.Translation(-new_center)
+
+        j = 0
+        v0 = bezier.bezier_points[0]
+        for v in self.stroke.data.splines[bezier_index].bezier_points:
+            teta_j = (teta / (stroke_lenght - 1)) * j
+            R = mathutils.Matrix.Rotation(teta_j, 4, axis)
+            v.co = T * R * Tinv * v0.co
+            j += 1
+
+        self.center_list[bezier_index] = new_center
+
+        self.axis_list[bezier_index] = axis
+
+        pin_stroke = bpy.data.objects["Pin_stroke" + str(bezier_index)]
+        pin_mesh = pin_stroke.data
+        pin_mesh.materials[0] = bpy.data.materials["yellow"]
+
+        # update pin position
+        pin_angle = self.pin_angle[bezier_index]
+        R_pin = mathutils.Matrix.Rotation(teta * pin_angle, 4, axis)
+        pin_stroke.location = T * R_pin * Tinv * v0.co
+
+        # from arc to segment
+        verts = []
+        pos_B = bezier.bezier_points[mid_point].co
+        verts.append(pos_A)
+        verts.append(pos_C)
+        M = self.find_mipoint(verts)
+        if (self.find_distance(pos_B, M) < 0.005):
+            # print("segment!")
+            j = 0
+            v0 = bezier.bezier_points[0]
+            for v in self.stroke.data.splines[bezier_index].bezier_points:
+                trasl = (pos_C - pos_A) / (stroke_lenght - 1)
+                v.co = v0.co + trasl * j
+                j += 1
+
+            # update pin position
+            pin_stroke.location = v0.co + (pos_C - pos_A) * pin_angle
+            self.center_list[bezier_index] = "INFINITY"
+            pin_mesh.materials[0] = bpy.data.materials["green"]
+
+        # update for materials
+        pin_mesh.update()
+
+        ### UPDATE ARROW
+
+        arrow = bpy.data.objects["arrow_" + str(bezier_index)]
+
+        vec = bezier.bezier_points[-1].co - bezier.bezier_points[-2].co
+        DirectionVector = mathutils.Vector(vec)
+
+        arrow.location = pos_C
+
+        arrow.rotation_quaternion = DirectionVector.to_track_quat('Z', 'Y')
+
+        ### UPDATE NEXT STROKE
+
+        i = 0
+        for shape in self.shapes_at_start:
+            if(shape == "Target"+str(bezier_index)):
+                self.update_next_stroke(i,pos_C)
+            i+=1
+
+    def update_next_stroke(self, bezier_index, new_pos_A):
+
+        bezier = self.stroke.data.splines[bezier_index]
+
+        center = self.center_list[bezier_index]
+
+        # axis = self.axis_list[bezier_index]
+
+        stroke_lenght = len(bezier.bezier_points)
+
+        mid_point = int(round(stroke_lenght / 2))
+
+        #pos_A = bezier.bezier_points[0].co
+        pos_A = new_pos_A
+        pos_B = bezier.bezier_points[mid_point].co
+        pos_C = bezier.bezier_points[-1].co
+
+        #pos_C = origin_pos_C + diff
+
+        new_center = self.find_center(pos_A, pos_B, pos_C)
+
+        axis = self.find_axis(pos_A, pos_C, new_center)
+
+        # print(pos_A, pos_B, pos_C, new_center)
+
+        teta = self.find_teta(pos_A, pos_C, new_center, 0)
+
+        T = mathutils.Matrix.Translation(new_center)
+        Tinv = mathutils.Matrix.Translation(-new_center)
+
+        j = 0
+
+        bezier.bezier_points[0].co = new_pos_A
+        v0 = bezier.bezier_points[0]
+        for v in self.stroke.data.splines[bezier_index].bezier_points:
+            teta_j = (teta / (stroke_lenght - 1)) * j
+            R = mathutils.Matrix.Rotation(teta_j, 4, axis)
+            v.co = T * R * Tinv * v0.co
+            j += 1
+
+        self.center_list[bezier_index] = new_center
+
+        self.axis_list[bezier_index] = axis
+
+        pin_stroke = bpy.data.objects["Pin_stroke" + str(bezier_index)]
+        pin_mesh = pin_stroke.data
+        pin_mesh.materials[0] = bpy.data.materials["yellow"]
+
+        # update pin position
+        pin_angle = self.pin_angle[bezier_index]
+        R_pin = mathutils.Matrix.Rotation(teta * pin_angle, 4, axis)
+        pin_stroke.location = T * R_pin * Tinv * v0.co
+
+        # from arc to segment
+        verts = []
+        pos_B = bezier.bezier_points[mid_point].co
+        verts.append(pos_A)
+        verts.append(pos_C)
+        M = self.find_mipoint(verts)
+        if (self.find_distance(pos_B, M) < 0.005):
+            # print("segment!")
+            j = 0
+            v0 = bezier.bezier_points[0]
+            for v in self.stroke.data.splines[bezier_index].bezier_points:
+                trasl = (pos_C - pos_A) / (stroke_lenght - 1)
+                v.co = v0.co + trasl * j
+                j += 1
+
+            # update pin position
+            pin_stroke.location = v0.co + (pos_C - pos_A) * pin_angle
+            self.center_list[bezier_index] = "INFINITY"
+            pin_mesh.materials[0] = bpy.data.materials["green"]
+
+        # update for materials
+        pin_mesh.update()
+
+        ### UPDATE ARROW
+
+        arrow = bpy.data.objects["arrow_" + str(bezier_index)]
+
+        vec = bezier.bezier_points[-1].co - bezier.bezier_points[-2].co
+        DirectionVector = mathutils.Vector(vec)
+
+        arrow.location = pos_C
+
+        arrow.rotation_quaternion = DirectionVector.to_track_quat('Z', 'Y')
+
     def rotate_pin(self, bezier_index, pen_pos):
 
         pin = bpy.data.objects["Pin_stroke" + str(bezier_index)]
@@ -2287,6 +2533,28 @@ class OpenVR(HMD_Base):
                     scn.objects.link(new_obj)
 
                     self.pin_list.append(new_obj.name)
+
+                if(shape.name == "Basis" and self.find_distance(vrtx, shapekey_array[0].data[indx].co) > threshold):
+
+                    print("ENTRATO BASIS")
+
+                    new_obj = pin.copy()
+                    new_obj.data = pin.data.copy()
+                    new_obj.location = shape.data[indx].co
+
+                    resize = self.find_box_diag(self.my_obj) / 143.8524066485403
+                    new_obj.scale = (resize, resize, resize)
+
+                    new_obj.name = shape.name
+
+                    new_obj.show_x_ray = True
+                    new_obj.show_name = True
+                    new_obj.hide = False
+
+                    scn.objects.link(new_obj)
+
+                    self.pin_list.append(new_obj.name)
+
 
         bm.free()
 
@@ -2947,6 +3215,9 @@ class OpenVR(HMD_Base):
 
         #get_weights_by_LQ().start()
 
+        self.rot_axis()
+
+
 
 
 
@@ -3125,23 +3396,35 @@ class OpenVR(HMD_Base):
                     print("IDLE -> CONTROL_PIN")
                     #self.changeSelection(self.objToControll, self.boneToControll, False)
 
-
+                    flag = 1
                     i=0
                     d_min = 10*10
                     for bezier in self.beziere_list:
                         stroke_lenght = len(bezier.bezier_points)
                         mid_point = int(round(stroke_lenght / 2))
-                        mid_point_co = bezier.bezier_points[mid_point].co
-                        d = self.find_distance(ctrl.location,mid_point_co)
-                        if(d < d_min):
-                            d_min = d
+                        #mid_point_co = bezier.bezier_points[mid_point].co
+                        mid_point_co = bpy.data.objects["Pin_stroke"+str(i)].location
+                        end_point_co = bezier.bezier_points[-1].co
+                        d1 = self.find_distance(ctrl.location,mid_point_co)
+                        d2 = self.find_distance(ctrl.location,end_point_co)
+                        if(d1 < d_min):
+                            d_min = d1
                             self.pin_stroke = mid_point_co.copy()
                             self.close_b_idx = i
+                            flag = 0
+                        if(d2 < d_min):
+                            d_min = d2
+                            self.pin_stroke = end_point_co.copy()
+                            self.close_b_idx = i
+                            flag = 1
                         i+=1
 
                     self.last_pen_pos = ctrl.location.copy()
 
-                    self.state = State.CONTROL_PIN
+                    if(flag == 0):
+                        self.state = State.CONTROL_PIN
+                    if(flag == 1):
+                        self.state = State.CONTROL_ARROW
 
                 # ROTATE PIN
                 if (ctrl_state.ulButtonPressed == 8589934592):
@@ -3257,6 +3540,7 @@ class OpenVR(HMD_Base):
 
 
                 self.update_stroke(self.close_b_idx, diff, self.pin_stroke)
+                #self.update_stroke_by_arrow(self.close_b_idx, diff, self.pin_stroke)
 
 
 
@@ -3281,14 +3565,33 @@ class OpenVR(HMD_Base):
 
                     self.state = State.IDLE
 
+            elif self.state == State.CONTROL_ARROW:
+
+                diff = ctrl.location - self.last_pen_pos
+
+                #print("B: ", self.pin_stroke, " last_pen: ", self.last_pen_pos, " diff: ",diff )
+
+
+                #self.update_stroke(self.close_b_idx, diff, self.pin_stroke)
+                self.update_stroke_by_arrow(self.close_b_idx, diff, self.pin_stroke)
+
+
+                if ctrl_state.ulButtonPressed != 4:
+                    # print("touch button released")
+                    self.changeSelection(self.objToControll, self.boneToControll, True)
+
+                    C = self.stroke.data.splines[self.close_b_idx].bezier_points[-1].co
+                    self.update_shape_target(self.my_obj,self.close_b_idx,self.main_vertex_list[self.close_b_idx],C)
+
+                    self.state = State.IDLE
+
             elif self.state == State.ROTATE_PIN:
 
                 if (ctrl_state.ulButtonPressed == 8589934592):
 
                     ratio = self.rotate_pin(self.close_b_idx, ctrl.location)
 
-                    self.scale_keyframes(self.target_list[self.close_b_idx],ratio,self.start_frame_list[self.close_b_idx], self.end_frame_list[self.close_b_idx
-                    ])
+                    self.scale_keyframes(self.target_list[self.close_b_idx],ratio,self.start_frame_list[self.close_b_idx], self.end_frame_list[self.close_b_idx])
 
                 else:
                     print("ROTATE_PIN -> IDLE")
