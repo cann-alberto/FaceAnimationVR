@@ -2672,7 +2672,7 @@ class OpenVR(HMD_Base):
 
     ## UI ##########
 
-    def add_bar(self,start_frame, end_frame, shape_name):
+    def add_bar(self, start_frame, end_frame, shape_name):
 
         frame_start_UI_obj = bpy.data.objects["Frame_start_UI"]
         frame_start_UI = int(frame_start_UI_obj.data.body)
