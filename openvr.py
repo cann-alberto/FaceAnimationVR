@@ -811,13 +811,11 @@ class OpenVR(HMD_Base):
         print (datetime.datetime.now())
 
     def remove_spline(self):
-
         ##update UI
         self.delete_bar(len(self.target_list) - 1)
 
         polyline = bpy.data.curves['Stroke'].splines[-1]
         bpy.data.curves['Stroke'].splines.remove(polyline)
-
 
         # remove last shape target
         TargetIndex = self.my_obj.data.shape_keys.key_blocks.keys().index(self.target_list[-1])
@@ -851,8 +849,6 @@ class OpenVR(HMD_Base):
         self.start_frame_list.remove(self.start_frame_list[-1])
         self.end_frame_list.remove(self.end_frame_list[-1])
         self.cut_frame_list.remove(self.cut_frame_list[-1])
-
-
 
     def remove_closest_spline(self, pos):
 
