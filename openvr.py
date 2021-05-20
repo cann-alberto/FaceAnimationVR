@@ -2672,7 +2672,7 @@ class OpenVR(HMD_Base):
 
     ## UI ##########
 
-    def add_bar(self, start_frame, end_frame, shape_name):
+    def add_bar(self,start_frame, end_frame, shape_name):
 
         frame_start_UI_obj = bpy.data.objects["Frame_start_UI"]
         frame_start_UI = int(frame_start_UI_obj.data.body)
@@ -2683,44 +2683,75 @@ class OpenVR(HMD_Base):
 
         new_bar = last_bar.copy()
         new_bar.data = last_bar.data.copy()
-        ### new_bar.name
+
+        ## Cloning from template object e data object
+        new_start_handle = bpy.data.objects["handle_start"].copy()
+        new_start_handle.data = bpy.data.objects["handle_start"].data.copy()
+        new_end_handle = bpy.data.objects["handle_end"].copy()
+        new_end_handle.data = bpy.data.objects["handle_end"].data.copy()
+
+        # Linking objects to the scene
         scn = bpy.context.scene
         scn.objects.link(new_bar)
+        scn.objects.link(new_start_handle)
+        scn.objects.link(new_end_handle)
 
+        # setting paramentes of new objects
         new_bar.hide = False
         new_bar.name = self.target_list[-1] + "_bar"
+        new_start_handle.name = self.target_list[-1] + "_start_handle"
+        new_end_handle.name = self.target_list[-1] + "_end_handle"
 
+        # creating text field for showing name of the shape key
         new_text = last_text.copy()
         new_text.data = last_text.data.copy()
         scn.objects.link(new_text)
         new_text.data.body = shape_name
-        new_text.name = "shape_name_" + str(len(self.target_list)-1)
+        new_text.name = "shape_name_" + str(len(self.target_list) - 1)
 
+        # positioning objects
         n = len(self.target_list)
 
-        new_bar.location = last_bar.location - mathutils.Vector((0, 0, 0.25*n))
-        new_text.location = last_text.location - mathutils.Vector((0, 0, 0.25*n))
+        new_bar.location = last_bar.location - mathutils.Vector((0, 0, 0.25 * n))
+        new_text.location = last_text.location - mathutils.Vector((0, 0, 0.25 * n))
 
+        new_start_handle.location = last_bar.location - mathutils.Vector((0, 0, 0.25 * n))
+        new_end_handle.location = last_bar.location - mathutils.Vector((0, 0, 0.25 * n))
+
+        print (last_bar.location)
+        new_start_handle.hide = False
+        new_end_handle.hide = False
+
+        # checking action out of the timeline range
         if (start_frame < frame_start_UI):
             start_frame = frame_start_UI
+            new_start_handle.hide = True
         if (end_frame > frame_end_UI):
             end_frame = frame_end_UI
+            new_end_handle.hide = True
 
         if (start_frame >= frame_end_UI or end_frame <= frame_start_UI):
             s = 0
         else:
+            # Scaling the bar according to the start and end frame
             time_interval = end_frame - start_frame
             full_time_interval = frame_end_UI - frame_start_UI
-
             s = (time_interval / full_time_interval) * 80
-
             new_bar.scale = (s, 1, 1)
 
+            # objects at the beginning of the action
             factor = (start_frame - frame_start_UI) / full_time_interval
-
             translation = (frame_start_UI_obj.location - frame_end_UI_obj.location) * factor
 
             new_bar.location = new_bar.location - translation
+            new_start_handle.location = new_bar.location
+
+            # objects at the ending of the action
+            displacement = start_frame - frame_start_UI
+            factor = (end_frame - frame_start_UI - displacement) / full_time_interval
+            translation = (frame_start_UI_obj.location - frame_end_UI_obj.location) * factor
+
+            new_end_handle.location = new_bar.location - translation
 
     def update_bars(self):
 
