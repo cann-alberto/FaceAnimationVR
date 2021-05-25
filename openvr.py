@@ -321,24 +321,30 @@ class get_weights_by_LQ(threading.Thread):
 
     def run(self):
 
-        global weights
-        stroke_lenght = len(self.stroke.data.splines[-1].bezier_points)
-        pin_start = self.stroke.data.splines[-1].bezier_points[0].co
-        pin_end = self.stroke.data.splines[-1].bezier_points[stroke_lenght - 1].co
-        global v_index
+        # global weights
+        # stroke_lenght = len(self.stroke.data.splines[-1].bezier_points)
+        # pin_start = self.stroke.data.splines[-1].bezier_points[0].co
+        # pin_end = self.stroke.data.splines[-1].bezier_points[stroke_lenght - 1].co
+        # global v_index
+        #
+        # weights = self.calc_weights(self.my_obj, pin_end, v_index, 0)
+        #
+        # print("initial weights:", weights)
+        #
+        # #mute the final shape for the moment
+        # shapekey_array = self.my_obj.data.shape_keys.key_blocks
+        # for shape in shapekey_array:
+        #     if(shape.name == "Final"):
+        #         shape.mute = True
+        #
+        # global thread_is_done
+        # thread_is_done = True
+        i=0
+        while(i<100):
+            time.sleep(0.5)
+            print("ok")
 
-        weights = self.calc_weights(self.my_obj, pin_end, v_index, 0)
-
-        print("initial weights:", weights)
-
-        #mute the final shape for the moment
-        shapekey_array = self.my_obj.data.shape_keys.key_blocks
-        for shape in shapekey_array:
-            if(shape.name == "Final"):
-                shape.mute = True
-
-        global thread_is_done
-        thread_is_done = True
+            i+=1
 
 
 
@@ -823,6 +829,13 @@ class OpenVR(HMD_Base):
         TargetIndex = self.my_obj.data.shape_keys.key_blocks.keys().index(self.target_list[-1])
         self.my_obj.active_shape_key_index = TargetIndex
         bpy.ops.object.shape_key_remove()
+
+        # remove last display shapekey
+        DsiplayIndex = self.my_obj.data.shape_keys.key_blocks.keys().index("Display"+self.target_list[-1][-1])
+        self.my_obj.active_shape_key_index = DsiplayIndex
+        bpy.ops.object.shape_key_remove()
+
+
         # remove keyframes
         target_n = len(self.target_list) - 1
         for action in bpy.data.actions:
@@ -830,6 +843,7 @@ class OpenVR(HMD_Base):
                 if (fcu.data_path == 'key_blocks["' + "Target"+ str(target_n) + '"].value'):
                     print("remove: ", 'key_blocks["' + "Target"+ str(target_n) + '"].value')
                     action.fcurves.remove(fcu)
+
 
         pin_obj = bpy.data.objects["Pin_stroke" + str(target_n)]
         bpy.data.objects.remove(pin_obj)
@@ -853,6 +867,8 @@ class OpenVR(HMD_Base):
         self.cut_frame_list.remove(self.cut_frame_list[-1])
         self.pin_angle.remove(self.pin_angle[-1])
         self.symmetrical_indx.remove( self.symmetrical_indx[-1])
+        self.v_groups_list.remove(self.v_groups_list[-1])
+        self.diff_list.remove( self.diff_list[-1])
 
 
 
@@ -994,6 +1010,9 @@ class OpenVR(HMD_Base):
     verts_at_start = []
     symmetry = []
     symmetrical_indx = []
+    ## FOR OPTIMIZATION
+    diff_list = [] #list of list
+    v_groups_list = [] #list of list
 
     pin_list = []
     pin_angle = []
@@ -1019,11 +1038,24 @@ class OpenVR(HMD_Base):
     def my_handler(self, *args):
         # print("Frame Change", bpy.context.scene.frame_current)
         #mute all the shapekey
-        shapekey_array = self.my_obj.data.shape_keys.key_blocks
-        for shape in shapekey_array:
-            if (shape.name != "Final"):
-                shape.mute = True
-        self.rot_axis()
+        # shapekey_array = self.my_obj.data.shape_keys.key_blocks
+        # for shape in shapekey_array:
+        #     if (shape.name != "Final"):
+        #         shape.mute = True
+        #self.rot_axis()
+
+        my_thread = threading.Thread(target=self.rot_axis_light)
+        my_thread.start()
+
+        #get_weights_by_LQ().start()
+
+    def prova(self):
+        i=0
+        while(i<100):
+            time.sleep(0.5)
+            print("ok2")
+
+            i+=1
 
     def rot_axis(self):
 
@@ -1041,7 +1073,8 @@ class OpenVR(HMD_Base):
 
         k = bpy.data.shape_keys.keys()
 
-        my_obj = bpy.context.active_object
+        #my_obj = bpy.context.active_object
+        my_obj = self.my_obj
 
         # shapes_name = my_obj.active_shape_key.id_data.name
         # shapekey_array = bpy.data.shape_keys[shapes_name].key_blocks
@@ -1064,7 +1097,7 @@ class OpenVR(HMD_Base):
         # shapekey3.value = 0
         shapekey2.value = 1
 
-        m_vertices = bpy.context.active_object.data.vertices
+        m_vertices = my_obj.data.vertices
 
         #center_obj = bpy.data.objects["center"]
 
@@ -1075,7 +1108,7 @@ class OpenVR(HMD_Base):
         # if(find_teta(pos_A,pos_B,center) > math.pi/2):
         # dir_rot = -1
 
-        WORLD = bpy.context.object.matrix_world
+        WORLD = my_obj.matrix_world
         WORLD_INV = copy.copy(WORLD)
         WORLD_INV.invert()
 
@@ -1106,18 +1139,18 @@ class OpenVR(HMD_Base):
                 target = self.target_list[j]
                 # if the shape key move this vertex
                 #if(frame_current >= self.start_frame_list[j] and frame_current <= self.end_frame_list[j]):
-                if(True):
-                    shape_start_name = self.shapes_at_start[j]
+                shape_start_name = self.shapes_at_start[j]
+                v1 = shapekey_array[shape_start_name].data[i].co
+                v2 = shapekey_array[target].data[i].co
+                if(v1!=v2):
                     if(shapekey_array[target].data[i].co != shapekey_array[shape_start_name].data[i].co):
                         weight = shapekey_array[target].value
                         if( frame_current >= self.start_frame_list[j] and frame_current <= self.cut_frame_list[j]):
 
-                            if(self.shapes_at_start[j] != "Basis"):
-                                v1 = shapekey_array[shape_start_name].data[i].co
-                                #v1 = self.verts_at_start[j][i]
+                            # if(self.shapes_at_start[j] != "Basis"):
+                            #     v1 = shapekey_array[shape_start_name].data[i].co
+                            #     #v1 = self.verts_at_start[j][i]
 
-
-                            v2 = shapekey_array[target].data[i].co
 
                             center_original = self.center_list[j]
 
@@ -1195,6 +1228,186 @@ class OpenVR(HMD_Base):
             #     self.verts_at_start[index][i] =  WORLD_INV * v_blended
 
             i += 1
+
+        # i=0
+        # for bezier in self.beziere_list:
+        #     print(self.shapes_at_start[i], self.target_list[i], self.start_frame_list[i], self.end_frame_list[i])
+        #     i+=1
+
+    def rot_axis_light(self):
+
+        frame_current = bpy.context.scene.frame_current
+
+        # i=0
+        ## index list of start shape to be update
+        # index_list = []
+        # for shape in self.shapes_at_start:
+        #     frame_start = self.start_frame_list[i]
+        #     if(shape!="Basis" and frame_start==frame_current):
+        #         index_list.append(i)
+        #       #  print("found at frame!")
+        #     i+=1
+
+        #k = bpy.data.shape_keys.keys()
+
+        #my_obj = bpy.context.active_object
+        my_obj = self.my_obj
+
+        # shapes_name = my_obj.active_shape_key.id_data.name
+        # shapekey_array = bpy.data.shape_keys[shapes_name].key_blocks
+        shapekey_array = my_obj.data.shape_keys.key_blocks
+
+        # shapekey target
+        #shapekey1 = shapekey_array[1]
+        # shapekey for visualization
+        #shapekey2 = shapekey_array["Final"]
+
+        '''
+        for shape in shapekey_array:
+            if(shape.name == "Target"):
+                shape_target = shape
+        '''
+        #shape_target = shapekey_array["Target"]
+
+        #weight = shapekey1.value
+
+        # shapekey3.value = 0
+        #shapekey2.value = 1
+
+        m_vertices = my_obj.data.vertices
+
+        #center_obj = bpy.data.objects["center"]
+
+        # initialize direction rotation
+        dir_rot = 1
+
+        # if the center is out of the mesh, change direction rotation
+        # if(find_teta(pos_A,pos_B,center) > math.pi/2):
+        # dir_rot = -1
+
+        # WORLD = my_obj.matrix_world
+        # WORLD_INV = copy.copy(WORLD)
+        # WORLD_INV.invert()
+
+        ###
+        # s=0
+        # for target in self.target_list:
+        #     #print(s,"th center:",target,self.center_list[s], "simmetry: ",self.symmetry[s])
+        #     s+=1
+
+
+        # i = 0
+        # while (i < len(m_vertices)):
+            # starting vertex
+            #v1 = m_vertices[i].co
+            # v1 = WORLD @ v1
+            # v1 = WORLD * v1
+            # target vertex
+            # v2 = shapekey1.data[i].co
+            # v2 = shape_target.data[i].co
+            # v2 = WORLD @ v2
+            # v2 = WORLD * v2
+
+
+            ######## NEW ALGORITHM
+            #v_list = []
+        j=0
+        for bezier in self.beziere_list:
+            target = self.target_list[j]
+            # if the shape key move this vertex
+            #if(frame_current >= self.start_frame_list[j] and frame_current <= self.end_frame_list[j]):
+            shape_start_name = self.shapes_at_start[j]
+            for i in self.v_groups_list[j]:
+                v1 = shapekey_array[shape_start_name].data[i].co
+                v2 = shapekey_array[target].data[i].co
+                #if(v1!=v2):
+                # if(shapekey_array[target].data[i].co != shapekey_array[shape_start_name].data[i].co):
+                weight = shapekey_array[target].value
+                if( frame_current >= self.start_frame_list[j] and frame_current <= self.cut_frame_list[j]):
+
+                    # if(self.shapes_at_start[j] != "Basis"):
+                    #     v1 = shapekey_array[shape_start_name].data[i].co
+                    #     #v1 = self.verts_at_start[j][i]
+
+
+                    center_original = self.center_list[j]
+
+                    axis_original = self.axis_list[j]
+
+                    i_axis = axis_original.copy()
+
+                    ## if center is not at infinity -> rotate
+                    if(center_original!="INFINITY"):
+
+                        center = self.center_list[j].copy()
+
+                        index = self.main_vertex_list[j]
+                        main_vertex = m_vertices[index].co.copy()
+
+                        # symmetry
+                        if(self.symmetry[j] == "X"):
+                            if (v1.x * main_vertex.x < 0):
+                                center.x = -center.x
+                                main_vertex.x = -main_vertex.x
+                                i_axis.y = -i_axis.y
+                                i_axis.z = -i_axis.z
+
+
+                        i_center = self.find_individual_center(center, main_vertex, v1, v2)
+
+
+                        #i_axis = self.find_axis(v1, v2, i_center)
+
+
+                        if (self.find_distance(v1, v2) < 0.001):
+                            teta = 0
+                        else:
+                            teta = self.find_teta(v1, v2, i_center, i) * dir_rot
+
+                        T = mathutils.Matrix.Translation(i_center)
+                        Tinv = mathutils.Matrix.Translation(-i_center)
+
+                        # # rotation maximum angle
+                        # Rmax = mathutils.Matrix.Rotation(teta, 4, i_axis)
+                        # # vmax = T @ Rmax @ Tinv @ v1
+                        # vmax = T * Rmax * Tinv * v1
+
+                        # rotation matrix for weighted angle
+                        R = mathutils.Matrix.Rotation(teta * weight, 4, i_axis)
+
+                        # find difference for traslation
+                        diff = self.diff_list[j][i] * weight
+
+                        vn = T * R * Tinv * v1
+                        # vn = vn + diff * weight
+                        vn = vn + diff
+
+                    ## if center is at infinity -> traslate
+                    else:
+                        diff = v2 - v1
+                        vn = v1 + (diff * weight)
+
+                    shapekey_array["Display"+str(j)].data[i].co = vn
+
+                    #v_list.append(vn)
+                else:
+                    shapekey_array["Display" + str(j)].data[i].co = shapekey_array[0].data[i].co
+            j+=1
+
+
+
+            # v0 = shapekey_array[0].data[i].co
+            # v_blended = self.blend_vertex_list(v_list, v0)
+
+
+            # shapekey2.data[i].co = WORLD_INV @ vn
+            # shapekey2.data[i].co = WORLD_INV * v_blended
+
+            ## update verts at start for current frame
+            # for index in index_list:
+            #     self.verts_at_start[index][i] =  WORLD_INV * v_blended
+
+            # i += 1
 
         # i=0
         # for bezier in self.beziere_list:
@@ -1579,7 +1792,7 @@ class OpenVR(HMD_Base):
         # apply all the weights
         i = 0
         for shape in shapekey_array:
-            if (shape.name != "Final" and shape.name[:6] != "Target"):
+            if (shape.name != "Final" and shape.name[:6] != "Target" and shape.name[:7] != "Display"):
                 shape.mute = False
                 shape.value = weights[i]
             else:
@@ -1595,6 +1808,8 @@ class OpenVR(HMD_Base):
         container_mesh = bpy.data.meshes.new("target")
         obj_copy = container_mesh.getFromObject(obj)
         '''
+
+
         # create a bmesh copy
         # depsgraph = bpy.context.evaluated_depsgraph_get()
         bm = bmesh.new()
@@ -1637,6 +1852,7 @@ class OpenVR(HMD_Base):
                 shape.value = 0
             i += 1
 
+
         # APPLY FFD TRANSFORMATION
         #if(max(weights) > 1):
         if(True):
@@ -1656,7 +1872,10 @@ class OpenVR(HMD_Base):
             d1 = self.find_distance(shapekey_array[0].data[seed_index].co,shapekey_array[shape_target_name].data[seed_index].co)
             d2 = self.find_distance(shapekey_array[0].data[seed_index].co,C)
 
-        weight = d2/d1
+        if(d1!=0):
+            weight = d2/d1
+        else:
+            weight = 1
 
         print("new_weight:", weight)
 
@@ -1670,18 +1889,19 @@ class OpenVR(HMD_Base):
                     v_basis = shapekey_array[0].data[i].co
                     v_target = shapekey_array[shape_target_name].data[i].co
 
-                    v.co = v_basis + (v_target - v_basis) * (d2 / d1)
+                    v.co = v_basis + (v_target - v_basis) * weight
 
                 if(shape_target_name == "Basis"):
                     v_basis = shapekey_array[0].data[i].co
                     v_target = shapekey_array[self.shapes_at_start[target_index]].data[i].co
 
-                    v.co = v_basis + (v_target - v_basis) * (d2 / d1)
+                    v.co = v_basis + (v_target - v_basis) * weight
+
                 i+=1
 
 
             # find the difference for FFD
-            seed = shapekey_array[shape_target_name].data[seed_index].co
+            seed = shapekey_array["Target"+str(target_index)].data[seed_index].co
             diff = C - seed
 
             # find the index of ith target and set value 1 to display
@@ -2394,9 +2614,13 @@ class OpenVR(HMD_Base):
             d2 = self.find_distance(v_basis, pos_C)
             d3 = self.find_distance(shapekey_array[shape_at_start].data[v_index].co, pos_C)
             v_target = shapekey_array[shape_at_start].data[v_index].co
+            if(d1 != 0):
+                weight = (d2 / d1)
+            else:
+                weight = 1
             if(d3 < d1):
-                pos_C = v_basis + (v_target - v_basis) * (d2 / d1)
-            if(d3 > d1):
+                pos_C = v_basis + (v_target - v_basis) * weight
+            if(d3 >= d1):
                 pos_C = v_basis
 
         new_center = self.find_center(pos_A, pos_B, pos_C)
@@ -3134,6 +3358,86 @@ class OpenVR(HMD_Base):
         return close_b_idx, sym_b_idx, pin_stroke, flag
 
 
+    def update_diff_list(self, my_obj, index, first_update):
+
+        m_vertices = my_obj.data.vertices
+
+        shapekey_array = my_obj.data.shape_keys.key_blocks
+
+        center = self.center_list[index]
+
+        if(center!="INFINITY"):
+
+            i_axis = self.axis_list[index]
+
+            shape_start_name = self.shapes_at_start[index]
+            target = self.target_list[index]
+
+            v_index = self.main_vertex_list[index]
+            main_vertex = m_vertices[v_index].co.copy()
+
+            i = 0
+            while(i < len(m_vertices)):
+
+                v1 = shapekey_array[shape_start_name].data[i].co
+                v2 = shapekey_array[target].data[i].co
+
+                i_center = self.find_individual_center(center, main_vertex, v1, v2)
+
+                # i_axis = self.find_axis(v1, v2, i_center)
+
+                if (self.find_distance(v1, v2) < 0.001):
+                    teta = 0
+                else:
+                    teta = self.find_teta(v1, v2, i_center, i)
+
+                T = mathutils.Matrix.Translation(i_center)
+                Tinv = mathutils.Matrix.Translation(-i_center)
+
+                # rotation maximum angle
+                Rmax = mathutils.Matrix.Rotation(teta, 4, i_axis)
+                # vmax = T @ Rmax @ Tinv @ v1
+                vmax = T * Rmax * Tinv * v1
+
+                # find difference for traslation
+                diff = (v2 - vmax)
+
+                if(first_update):
+                    self.diff_list[index].append(diff)
+                else:
+                    self.diff_list[index][i] = diff
+
+                i += 1
+
+    def update_v_groups_list(self, my_obj, index, first_update):
+
+        m_vertices = my_obj.data.vertices
+
+        shapekey_array = my_obj.data.shape_keys.key_blocks
+
+        shape_start = self.shapes_at_start[index]
+        shape_target = self.target_list[index]
+
+        if(not first_update):
+            self.v_groups_list[index] = []
+
+        i = 0
+        for v in m_vertices:
+            v1 = shapekey_array[shape_start].data[i].co
+            v2 = shapekey_array[shape_target].data[i].co
+            d = self.find_distance(v1,v2)
+            if(d > 0.01):
+                self.v_groups_list[index].append(i)
+            i+=1
+
+        print("total vertex: ", len(m_vertices) )
+        print("vertex group dimension: ", len(self.v_groups_list[index]) )
+        print("vertex gropu: ", self.v_groups_list[index])
+
+
+
+
+
 
 
 
@@ -3174,6 +3478,7 @@ class OpenVR(HMD_Base):
 
 
         stroke_lenght = len(self.stroke.data.splines[-1].bezier_points)
+        self.stroke.data.splines[-1].bezier_points[0].co = close_v_pos
         pin_start = self.stroke.data.splines[-1].bezier_points[0].co
         pin_end = self.stroke.data.splines[-1].bezier_points[stroke_lenght - 1].co
 
@@ -3192,6 +3497,8 @@ class OpenVR(HMD_Base):
                 i += 1
             bpy.ops.object.shape_key_add(from_mix=False)
             self.my_obj.data.shape_keys.key_blocks[i].name = "Target" + str(shape_index)
+            bpy.ops.object.shape_key_add(from_mix=False)
+            self.my_obj.data.shape_keys.key_blocks[i+1].name = "Display" + str(shape_index)
 
             ## append new target with TragetN format
             self.target_list.append("Target" + str(shape_index))
@@ -3356,8 +3663,10 @@ class OpenVR(HMD_Base):
             axis = self.find_axis(pin_start, pin_end, center)
             self.axis_list.append(axis)
 
+
             self.find_shape_target(self.my_obj, weights, close_v_index, pin_end)
             # self.find_shape_target_rot(self.my_obj, weights, close_v_index, pin_end)
+
 
             ## append shape target with proper name
             ##self.target_list.append(shape_name)
@@ -3378,6 +3687,18 @@ class OpenVR(HMD_Base):
 
             self.fix_stroke(bezier_index, co, pin_end_2, center, axis, 1)
             self.pin_angle.append(0.5)
+
+            ##################### OPTIMIZATION
+            ## update diff_list
+            new_list = []
+            self.diff_list.append(new_list)
+            self.update_diff_list(self.my_obj, bezier_index - 1, True)
+            ## update vertex gruop
+            new_list_2 = []
+            self.v_groups_list.append(new_list_2)
+            self.update_v_groups_list(self.my_obj, bezier_index - 1, True)
+
+            #### HANDLER
 
             bpy.app.handlers.frame_change_pre.append(self.my_handler)
 
@@ -3407,8 +3728,10 @@ class OpenVR(HMD_Base):
         #get_weights_by_LQ().start()
 
         for shape in shapekey_array:
-            if (shape.name == "Final"):
+            #if (shape.name == "Final"):
+            if (shape.name[:7] == "Display"):
                 shape.mute = False
+                shape.value = 1
             else:
                 shape.mute = True
 
@@ -3453,6 +3776,8 @@ class OpenVR(HMD_Base):
         ## ADD NEW SHAPE TARGET
         bpy.ops.object.shape_key_add(from_mix=False)
         self.my_obj.data.shape_keys.key_blocks[i].name = "Target" + str(shape_index)
+        bpy.ops.object.shape_key_add(from_mix=False)
+        self.my_obj.data.shape_keys.key_blocks[i + 1].name = "Display" + str(shape_index)
 
         ## COPY KEYFRAMES
         KeyName = self.my_obj.data.shape_keys.name
@@ -3567,6 +3892,16 @@ class OpenVR(HMD_Base):
 
         # UPDATE UI PANEL
         self.update_bars()
+
+        ##################### OPTIMIZATION
+        ## update diff_list
+        new_list = []
+        self.diff_list.append(new_list)
+        self.update_diff_list(self.my_obj, bezier_index - 1, True)
+        ## update vertex gruop
+        new_list_2 = []
+        self.v_groups_list.append(new_list_2)
+        self.update_v_groups_list(self.my_obj, bezier_index - 1, True)
 
         if (self.symmetry_switch):
             self.symmetry.append("X")
@@ -3937,10 +4272,12 @@ class OpenVR(HMD_Base):
                     diff_sym = copy.deepcopy(diff)
                     diff_sym[0] = - diff_sym[0]
                     self.update_stroke(self.sym_b_idx, diff_sym, pin_sym)
+                    self.update_diff_list(self.my_obj, self.sym_b_idx, False)
 
 
                 self.update_stroke(self.close_b_idx, diff, self.pin_stroke)
                 #self.update_stroke_by_arrow(self.close_b_idx, diff, self.pin_stroke)
+                self.update_diff_list(self.my_obj, self.close_b_idx, False)
 
                 print("x: ",bpy.data.objects["Pin_stroke"+str(self.close_b_idx)].location[0])
 
@@ -4005,12 +4342,16 @@ class OpenVR(HMD_Base):
                     if(self.symmetry_switch and self.sym_b_idx != -1):
                         C = self.stroke.data.splines[self.sym_b_idx].bezier_points[-1].co
                         self.update_shape_target(self.my_obj, self.sym_b_idx, self.main_vertex_list[self.sym_b_idx],C)
+                        self.update_diff_list(self.my_obj, self.sym_b_idx, False)
+                        self.update_v_groups_list(self.my_obj, self.sym_b_idx, False)
 
 
                     C = self.stroke.data.splines[self.close_b_idx].bezier_points[-1].co
                     self.update_shape_target(self.my_obj,self.close_b_idx,self.main_vertex_list[self.close_b_idx],C)
+                    self.update_diff_list(self.my_obj, self.close_b_idx, False)
+                    self.update_v_groups_list(self.my_obj, self.close_b_idx, False)
 
-                    self.rot_axis()
+                    self.rot_axis_light()
 
                     self.state = State.IDLE
 
