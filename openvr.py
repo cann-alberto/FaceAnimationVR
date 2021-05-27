@@ -1345,12 +1345,12 @@ class OpenVR(HMD_Base):
                         main_vertex = m_vertices[index].co.copy()
 
                         # symmetry
-                        if(self.symmetry[j] == "X"):
-                            if (v1.x * main_vertex.x < 0):
-                                center.x = -center.x
-                                main_vertex.x = -main_vertex.x
-                                i_axis.y = -i_axis.y
-                                i_axis.z = -i_axis.z
+                        # if(self.symmetry[j] == "X"):
+                        #     if (v1.x * main_vertex.x < 0):
+                        #         center.x = -center.x
+                        #         main_vertex.x = -main_vertex.x
+                        #         i_axis.y = -i_axis.y
+                        #         i_axis.z = -i_axis.z
 
 
                         i_center = self.find_individual_center(center, main_vertex, v1, v2)
@@ -2853,7 +2853,8 @@ class OpenVR(HMD_Base):
                     new_obj.data = pin.data.copy()
                     new_obj.location = shape.data[indx].co
 
-                    resize = self.find_box_diag(self.my_obj) / 143.8524066485403
+                    #resize = self.find_box_diag(self.my_obj) / 143.8524066485403
+                    resize = self.find_box_diag(self.my_obj) / 250
                     new_obj.scale = (resize, resize, resize)
 
                     new_obj.name = shape.name
@@ -3551,16 +3552,16 @@ class OpenVR(HMD_Base):
 
 
 
-            #VERIFY X SIMMETRY
-            shape_i = np.argmax(weights)
-            #simmetry = self.is_symmetrical(self.my_obj, shape_i)
-            #if(simmetry[0] == True):
-            if(self.symmetry_switch):
-                self.symmetry.append("X")
-              #  print("SYMMETRICAL!")
-            else:
-                self.symmetry.append("NONE")
-                #self.symmetry.append("X")
+            # #VERIFY X SIMMETRY
+            # shape_i = np.argmax(weights)
+            # #simmetry = self.is_symmetrical(self.my_obj, shape_i)
+            # #if(simmetry[0] == True):
+            # if(self.symmetry_switch):
+            #     self.symmetry.append("X")
+            #   #  print("SYMMETRICAL!")
+            # else:
+            #     self.symmetry.append("NONE")
+            #     #self.symmetry.append("X")
 
 
             self.remove_pins()
@@ -3709,11 +3710,16 @@ class OpenVR(HMD_Base):
             # UPDATE UI PANEL
             self.update_bars()
 
+            original_shape_name = bpy.data.objects["shape_name_"+str(bezier_index - 1)].data.body
+
             ## ADD SYMMETRICAL STROKE
             if(self.symmetry_switch):
                 # update symmetrical index list
-                self.symmetrical_indx.append((bezier_index+1)-1)
-                self.add_symmetrical_stroke()
+                if(original_shape_name[-2:] == ".R" or original_shape_name[-2:] == ".L"):
+                    self.symmetrical_indx.append((bezier_index+1)-1)
+                    self.add_symmetrical_stroke()
+                else:
+                    self.symmetrical_indx.append(-1)
             else:
                 self.symmetrical_indx.append(-1)
 
@@ -3735,7 +3741,7 @@ class OpenVR(HMD_Base):
             else:
                 shape.mute = True
 
-        self.rot_axis()
+        self.rot_axis_light()
 
 
     def add_symmetrical_stroke(self):
@@ -4300,6 +4306,8 @@ class OpenVR(HMD_Base):
                 if ctrl_state.ulButtonPressed != 4:
                     # print("touch button released")
                     self.changeSelection(self.objToControll, self.boneToControll, True)
+
+                    self.rot_axis_light()
 
                     self.state = State.IDLE
 
