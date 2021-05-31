@@ -3126,25 +3126,34 @@ class OpenVR(HMD_Base):
 
             i += 1
 
-    def move_fulltime_bar(self,d):
+    def move_fulltime_bar(self,x):
 
         full_frame_start_obj = bpy.data.objects["Full_Frame_Start"]
         full_frame_end_obj = bpy.data.objects["Full_Frame_End"]
         full_time_bar = bpy.data.objects["Full_Time_Bar"]
 
+        shift_bar = bpy.data.objects["shift_bar"]
+
         full_frame_start = int(full_frame_start_obj.data.body)
         full_frame_end = int(full_frame_end_obj.data.body)
 
-        d_max = 1 - full_time_bar.scale[0] / 16.650
-        if (d > d_max):
-            d = d_max
+        # d_max = 1 - full_time_bar.scale[0] / 16.650
+        # if (d > d_max):
+        #     d = d_max
+        if(x < -1):
+            x=-1
+        if(x > 1 - (full_time_bar.scale[0] / 16.650)*2):
+            x = 1 - (full_time_bar.scale[0] / 16.650)*2
+
+        x_middle = x + (full_time_bar.scale[0] / 16.650)/2
 
         #factor = d / self.find_distance(full_frame_start_obj.location, full_frame_end_obj.location)
-        factor = d
+        factor = 1 - (full_frame_end_obj.location.x - x)/(full_frame_end_obj.location.x - full_frame_start_obj.location.x)
 
-        traslation = (full_frame_start_obj.location - full_frame_end_obj.location) * factor
+        # traslation = (full_frame_start_obj.location - full_frame_end_obj.location) * factor
 
-        full_time_bar.location = full_frame_start_obj.location - traslation
+        #full_time_bar.location = full_frame_start_obj.location - traslation
+        full_time_bar.location.x = shift_bar.location.x + x
 
         ## UPDDTAE PANEL
 
@@ -3183,22 +3192,28 @@ class OpenVR(HMD_Base):
             bar_UI.hide = True
             frame_i_obj.hide = True
 
-    def scale_time(self, d):
+    def scale_time(self, x):
 
         time_scale_obj = bpy.data.objects["Time_Scale"]
+        scale_bar = bpy.data.objects["scale_bar"]
         minus = bpy.data.objects["minus"]
         plus = bpy.data.objects["plus"]
 
         # scale = d/find_distance(minus.location,plus.location)
 
-        scale = d
+        #scale = d
+        if(x > 1):
+            x = 1
+        if (x < -1):
+            x = -1
 
-        if (scale > 1):
-            scale = 1
+        scale = (plus.location.x - x)/(plus.location.x - minus.location.x)
 
-        traslation = plus.location - minus.location
 
-        time_scale_obj.location = minus.location + traslation * scale
+        # traslation = plus.location - minus.location
+
+        #time_scale_obj.location = minus.location + traslation * scale
+        time_scale_obj.location.x = scale_bar.location.x + x
 
         ### UPDATE_PANEL
 
@@ -3305,7 +3320,8 @@ class OpenVR(HMD_Base):
 
         close_b_idx = -1
         sym_b_idx = -1
-        flag = 0
+        flag = -1
+        pin_stroke = Vector((0,0,0))
         i = 0
         d_min = 10 * 10
         for bezier in self.beziere_list:
@@ -3353,7 +3369,9 @@ class OpenVR(HMD_Base):
         #
         #             i += 1
 
-        sym_b_idx = self.symmetrical_indx[close_b_idx]
+        if(close_b_idx >= 0):
+            sym_b_idx = self.symmetrical_indx[close_b_idx]
+
         print("CLOSE AND SYM: ",close_b_idx, sym_b_idx)
 
         return close_b_idx, sym_b_idx, pin_stroke, flag
@@ -4145,25 +4163,27 @@ class OpenVR(HMD_Base):
                         self.state = State.CONTROL_PIN
                     if(flag == 1):
                         self.state = State.CONTROL_ARROW
+                    if(flag == -1):
+                        print("NO STROKE FOUND")
 
                 # ROTATE PIN
                 if (ctrl_state.ulButtonPressed == 8589934592):
                     print("IDLE -> ROTATE_PIN")
 
-                    i=0
+                    i=-1
+                    self.close_b_idx = -1
                     d_min = 10*10
                     for bezier in self.beziere_list:
                         stroke_lenght = len(bezier.bezier_points)
                         mid_point = int(round(stroke_lenght / 2))
                         mid_point_co = bezier.bezier_points[mid_point].co
-                        pin = bpy.data.objects["Pin_stroke"+str(i)]
+                        pin = bpy.data.objects["Pin_stroke"+str(i + 1)]
                         d = self.find_distance(ctrl.location,pin.location)
                         if(d < d_min):
                             d_min = d
                             self.pin_stroke = mid_point_co.copy()
-                            self.close_b_idx = i
+                            self.close_b_idx = i + 1
                         i+=1
-
 
                     self.state = State.ROTATE_PIN
 
@@ -4367,25 +4387,28 @@ class OpenVR(HMD_Base):
 
                 if (ctrl_state.ulButtonPressed == 8589934592):
 
-                    ratio = self.rotate_pin(self.close_b_idx, ctrl.location)
+                    if(self.close_b_idx >= 0):
+                        ratio = self.rotate_pin(self.close_b_idx, ctrl.location)
 
-                    self.scale_keyframes(self.target_list[self.close_b_idx],
-                                         ratio,
-                                         self.start_frame_list[self.close_b_idx],
-                                         self.end_frame_list[self.close_b_idx])
-
-                    self.sym_b_idx = self.symmetrical_indx[self.close_b_idx]
-                    # STMMETRY:
-                    if (self.symmetry_switch and self.sym_b_idx != -1):
-
-                        ctrl_sym = copy.deepcopy(ctrl.location)
-                        ctrl_sym[0] = -ctrl_sym[0]
-                        self.rotate_pin(self.sym_b_idx, ctrl_sym)
-
-                        self.scale_keyframes(self.target_list[self.sym_b_idx],
+                        self.scale_keyframes(self.target_list[self.close_b_idx],
                                              ratio,
-                                             self.start_frame_list[self.sym_b_idx],
-                                             self.end_frame_list[self.sym_b_idx])
+                                             self.start_frame_list[self.close_b_idx],
+                                             self.end_frame_list[self.close_b_idx])
+
+                        self.sym_b_idx = self.symmetrical_indx[self.close_b_idx]
+                        # STMMETRY:
+                        if (self.symmetry_switch and self.sym_b_idx != -1):
+
+                            ctrl_sym = copy.deepcopy(ctrl.location)
+                            ctrl_sym[0] = -ctrl_sym[0]
+                            self.rotate_pin(self.sym_b_idx, ctrl_sym)
+
+                            self.scale_keyframes(self.target_list[self.sym_b_idx],
+                                                 ratio,
+                                                 self.start_frame_list[self.sym_b_idx],
+                                                 self.end_frame_list[self.sym_b_idx])
+                    else:
+                        print("NO STROKE FOUND")
 
                 else:
                     print("ROTATE_PIN -> IDLE")
@@ -4581,8 +4604,8 @@ class OpenVR(HMD_Base):
                     x, y = ctrl_state_l.rAxis[0].x, ctrl_state_l.rAxis[0].y
                     print(x,y)
 
-                # DECISIONAL
-                if (ctrl_state_l.ulButtonPressed == 4):
+                # PANEL INTERACTION
+                if (ctrl_state_l.ulButtonPressed == 8589934592):
                     # print("IDLE -> DECISIONAL")
                     # print ("DECISIONAL ENTER: ", self.objToControll_l, self.boneToControll_l)
                     # self.changeSelection(self.objToControll_l, self.boneToControll_l, False)
@@ -4634,7 +4657,7 @@ class OpenVR(HMD_Base):
 
 
                 # DRAG PANEL
-                if ctrl_state_l.ulButtonPressed == 8589934592:
+                if ctrl_state_l.ulButtonPressed == 4:
                     print("IDEAL -> DRAG_PANEL")
                     bpy.data.objects["Text.L"].data.body = "Drag Panel"
                     self.state_l = StateLeft.DRAG_PANEL
@@ -4869,32 +4892,37 @@ class OpenVR(HMD_Base):
                 # currBone_l = self.boneToControll_l
                 # print("Current obj:", self.objToControll_l, self.boneToControll_l)
 
-                UI_mw = bpy.data.objects["Panel_UI"].matrix_world
+                # UI_mw = bpy.data.objects["Panel_UI"].matrix_world
+                #
+                # start = UI_mw * bpy.data.objects["Full_Frame_Start"].location
+                # end = UI_mw * bpy.data.objects["Full_Frame_End"].location
+                # a = self.find_distance(end,start)
+                # b = self.find_distance(ctrl_l.location,start)
+                #
+                # alpha = self.find_teta(start, end, ctrl_l.location, 0)
+                #
+                # c = self.find_distance(ctrl_l.location, end)
+                #
+                # d = b/a
+                #
+                # full_time_bar = bpy.data.objects["Full_Time_Bar"]
+                # d = d - (full_time_bar.scale[0] / 16.650) / 2
+                #
+                # if(d < 0):
+                #     d=0
+                #
+                # if(alpha < math.pi/2):
+                #     if(c > a):
+                #         d=0
 
-                start = UI_mw * bpy.data.objects["Full_Frame_Start"].location
-                end = UI_mw * bpy.data.objects["Full_Frame_End"].location
-                a = self.find_distance(end,start)
-                b = self.find_distance(ctrl_l.location,start)
+                shift_bar = bpy.data.objects["shift_bar"]
+                m_w = copy.copy(shift_bar.matrix_world)
+                m_w.invert()
+                relativ_pos = m_w * ctrl_l.location
 
-                alpha = self.find_teta(start, end, ctrl_l.location, 0)
+                self.move_fulltime_bar(relativ_pos.x)
 
-                c = self.find_distance(ctrl_l.location, end)
-
-                d = b/a
-
-                full_time_bar = bpy.data.objects["Full_Time_Bar"]
-                d = d - (full_time_bar.scale[0] / 16.650) / 2
-
-                if(d < 0):
-                    d=0
-
-                if(alpha < math.pi/2):
-                    if(c > a):
-                        d=0
-
-                self.move_fulltime_bar(d)
-
-                if ctrl_state_l.ulButtonPressed != 4:
+                if ctrl_state_l.ulButtonPressed != 8589934592:
                     self.changeSelection(self.objToControll_l, self.boneToControll_l, True)
                     self.state_l = StateLeft.IDLE
                     print ("SHIFT_TIME -> IDLE")
@@ -4902,26 +4930,33 @@ class OpenVR(HMD_Base):
 
             elif self.state_l == StateLeft.SCALE_TIME:
 
-                UI_mw = bpy.data.objects["Panel_UI"].matrix_world
+                # UI_mw = bpy.data.objects["Panel_UI"].matrix_world
+                #
+                # start = UI_mw * bpy.data.objects["minus"].location
+                # end = UI_mw * bpy.data.objects["plus"].location
+                # a = self.find_distance(end,start)
+                # b = self.find_distance(ctrl_l.location,start)
+                #
+                # alpha = self.find_teta(start, end, ctrl_l.location, 0)
+                #
+                # c = self.find_distance(ctrl_l.location,end)
+                #
+                # d = b/a
+                #
+                # if (alpha < math.pi / 2):
+                #     if(c > a):
+                #         d=0
 
-                start = UI_mw * bpy.data.objects["minus"].location
-                end = UI_mw * bpy.data.objects["plus"].location
-                a = self.find_distance(end,start)
-                b = self.find_distance(ctrl_l.location,start)
+                scale_bar = bpy.data.objects["scale_bar"]
+                m_w = copy.copy(scale_bar.matrix_world)
+                m_w.invert()
+                relativ_pos = m_w * ctrl_l.location
 
-                alpha = self.find_teta(start, end, ctrl_l.location, 0)
 
-                c = self.find_distance(ctrl_l.location,end)
 
-                d = b/a
+                self.scale_time(relativ_pos.x)
 
-                if (alpha < math.pi / 2):
-                    if(c > a):
-                        d=0
-
-                self.scale_time(d)
-
-                if ctrl_state_l.ulButtonPressed != 4:
+                if ctrl_state_l.ulButtonPressed != 8589934592:
                     self.changeSelection(self.objToControll_l, self.boneToControll_l, True)
                     self.state_l = StateLeft.IDLE
                     print ("SCALE_TIME -> IDLE")
@@ -5158,13 +5193,13 @@ class OpenVR(HMD_Base):
 
             elif self.state_l == StateLeft.DRAG_PANEL:
 
-                if ctrl_state_l.ulButtonPressed == 8589934592:
+                if ctrl_state_l.ulButtonPressed == 4:
                     Panel_UI = bpy.data.objects["Panel_UI"]
                     Empty = bpy.data.objects["Panel_empty"]
                     # Panel_UI.location = ctrl_l.location
                     Panel_UI.matrix_world = Empty.matrix_world
 
-                if ctrl_state_l.ulButtonPressed != 8589934592:
+                if ctrl_state_l.ulButtonPressed != 4:
                     print("DRAG_PANEL -> IDLE")
                     bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-idle.png"]
                     self.state_l = StateLeft.IDLE
