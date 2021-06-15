@@ -40,6 +40,8 @@ from mathutils import *
 from math import *
 import time
 
+import os
+
 currObject = ""
 currBone = ""
 currObject_l = ""
@@ -390,12 +392,17 @@ class StateLeft(Enum):
 
     TIMELINE_ENTER = 15
     TIMELINE = 16
+    TIMELINE_PLAY = 28
     TIMELINE_EXIT = 17
 
     START_FRAME = 18
     END_FRAME = 19
 
     DRAG_PANEL = 20
+    DRAG_SETTINGS = 25
+    CLOSE_SETTINGS = 26
+
+    SLIDER = 27
 
     THRESHOLD = 21
     THRESHOLD_EXIT = 22
@@ -795,7 +802,8 @@ class OpenVR(HMD_Base):
         curvedata = bpy.data.curves.new(name=name, type='CURVE')
         curvedata.dimensions = '3D'
         curvedata.fill_mode = 'FULL'
-        curvedata.bevel_depth = 0.01
+        #curvedata.bevel_depth = 0.01
+        curvedata.bevel_depth = float(bpy.data.objects["value_0"].data.body)
 
         ob = bpy.data.objects.new(name + "Obj", curvedata)
         bpy.context.scene.objects.link(ob)
@@ -988,8 +996,10 @@ class OpenVR(HMD_Base):
         #self.blend_targets(self.my_obj)
 
 
+    ########################################################### FILE CONFIG
 
-
+    my_file = open("config.txt", "r").readlines()
+    #print("VALUREEEEEEHDCOUHE: ",float(my_file[1]))
 
 
     ########################################################### MY VARIABLES
@@ -1030,7 +1040,10 @@ class OpenVR(HMD_Base):
     close_b_idx = 0
     sym_b_idx = 0
 
+    slider_idx = 0
+
     symmetry_switch = False
+    settings_switch = True
     symmetry_time_UI = 0
 
 
@@ -1680,9 +1693,10 @@ class OpenVR(HMD_Base):
 
         co, index, dist = kd.find(pin_p)
 
+
         bm.free()
 
-        return co, index
+        return co, index, dist
 
     def find_distance(self, p1, p2):
         d = sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2 + (p1[2] - p2[2]) ** 2)
@@ -1942,6 +1956,15 @@ class OpenVR(HMD_Base):
 
             self.apply_FFD(obj, diff, shape_index_general, seed_index)
 
+            ## RESET DISPLAY
+            shape_0 = shapekey_array[0]
+            display_i = shapekey_array["Display"+str(target_index)]
+            i=0
+            for v in display_i.data:
+                v.co = shape_0.data[i].co
+                i+=1
+
+
 
 
     def find_shape_target_rot(self, obj, weights, seed_index, C):
@@ -2067,7 +2090,9 @@ class OpenVR(HMD_Base):
         diag = self.find_box_diag(self.my_obj)
         #size = volume / 3309.205132779412
         #size = height / 5.797122095747182
-        size = diag / 6.509033696033152
+        #size = diag / 6.509033696033152
+        size = float(bpy.data.objects["value_3"].data.body)
+        print("SIZE:",size)
 
       #  print("diag:", diag, "proportional size: ",size)
 
@@ -2183,7 +2208,8 @@ class OpenVR(HMD_Base):
             # NO SUBSAMPLING:
             #frame_i = (round(delta_time * frame_rate) / stroke_points) * i + frame_start
 
-            sub = 9
+            #sub = 9
+            sub = int(bpy.data.objects["value_5"].data.body)
 
             #if(last_frame != frame_i):
             if(i%sub == 0):
@@ -2326,7 +2352,10 @@ class OpenVR(HMD_Base):
         new_obj.data = pin_stroke.data.copy()
         new_obj.location = bezier.bezier_points[mid_point].co
 
-        resize = self.find_box_diag(self.my_obj) / 250
+        # resize = self.find_box_diag(self.my_obj) / 250
+
+        depth_stroke = bpy.data.curves["Stroke"].bevel_depth
+        resize = depth_stroke / 0.2572
         new_obj.scale = (resize, resize, resize)
 
         new_obj.name = "Pin_stroke"+str(bezier_index-1)
@@ -2354,7 +2383,10 @@ class OpenVR(HMD_Base):
         DirectionVector = mathutils.Vector(vec)
         new_obj_2.rotation_quaternion = DirectionVector.to_track_quat('Z', 'Y')
 
-        resize = self.find_box_diag(self.my_obj) / 250
+        # resize = self.find_box_diag(self.my_obj) / 250
+
+        depth_stroke = bpy.data.curves["Stroke"].bevel_depth
+        resize = depth_stroke / 0.2572
         new_obj_2.scale = (resize, resize, resize)
 
         new_obj_2.name = "arrow_" + str(bezier_index - 1)
@@ -2387,7 +2419,10 @@ class OpenVR(HMD_Base):
         new_obj.data = pin_stroke.data.copy()
         new_obj.location = bezier.bezier_points[mid_point].co
 
-        resize = self.find_box_diag(self.my_obj) / 250
+        #resize = self.find_box_diag(self.my_obj) / 250
+        depth_stroke = bpy.data.curves["Stroke"].bevel_depth
+        resize = depth_stroke / 0.2572
+
         new_obj.scale = (resize, resize, resize)
 
         new_obj.name = "Pin_stroke" + str(bezier_index - 1)
@@ -2415,7 +2450,10 @@ class OpenVR(HMD_Base):
         DirectionVector = mathutils.Vector(vec)
         new_obj_2.rotation_quaternion = DirectionVector.to_track_quat('Z', 'Y')
 
-        resize = self.find_box_diag(self.my_obj) / 250
+        # resize = self.find_box_diag(self.my_obj) / 250
+        # new_obj_2.scale = (resize, resize, resize)
+
+        resize = depth_stroke / 0.2572
         new_obj_2.scale = (resize, resize, resize)
 
         new_obj_2.name = "arrow_" + str(bezier_index - 1)
@@ -2843,7 +2881,8 @@ class OpenVR(HMD_Base):
 
         #threshold = 0.5
         diag = self.find_box_diag(self.my_obj)
-        threshold = diag / 65.09033696033151
+        #threshold = diag / 65.09033696033151
+        threshold = float(bpy.data.objects["value_1"].data.body)
       #  print("threshold: ", threshold)
 
         for shape in shapekey_array:
@@ -2927,6 +2966,7 @@ class OpenVR(HMD_Base):
 
         diag = self.find_box_diag(self.my_obj)
         threshold = diag / 65.09033696033151
+        #threshold = float(bpy.data.objects["value_1"].data.body)
 
         start_fr = int(bpy.data.objects["Frame_i"].data.body)
         str1 = 'key_blocks["'
@@ -3006,6 +3046,57 @@ class OpenVR(HMD_Base):
         bpy.context.scene.frame_current = frame_update
 
         return frame_update
+
+    def play_frame(self, factor):
+
+        # start_bar = bpy.data.objects["Start_frame_bar"]
+        # end_bar = bpy.data.objects["End_frame_bar"]
+        # bar = bpy.data.objects["Frame_bar"]
+
+        ## PANEL UI
+        start_UI = bpy.data.objects["Frame_start_UI"]
+        end_UI = bpy.data.objects["Frame_end_UI"]
+        bar_UI = bpy.data.objects["Bar_UI"]
+
+        bar_UI.hide = False
+
+        # frame_start = bpy.data.objects["Start_frame"]
+        #frame_start = bpy.data.objects["Frame_start_UI"]
+        #frame_start_int = int(frame_start.data.body)
+
+        # frame_end = bpy.data.objects["End_frame"]
+        #frame_end = bpy.data.objects["Frame_end_UI"]
+        #frame_end_int = int(frame_end.data.body)
+
+        ## translate frame
+
+        #frame_i = bpy.data.objects["Frame_i"]
+        frame_i_UI = bpy.data.objects["Frame_i_UI"]
+
+        frame_i_UI.hide = False
+
+        #time_len = self.find_distance(start_bar.location, end_bar.location)
+
+        #trans = end_bar.location - start_bar.location
+        trans_UI = end_UI.location.x - start_UI.location.x
+
+        #bar.location = start_bar.location + trans / 2 + trans_x * (trans / 2)
+        #bar_UI.location.x = start_UI.location.x + trans_UI / 2 + trans_x * (trans_UI / 2)
+        bar_UI.location.x = start_UI.location.x + trans_UI*factor
+
+        ## update frame
+
+        #frame_len = self.find_distance(start_bar.location, bar.location)
+
+        #frame_update = round((frame_len / time_len) * (frame_end_int - frame_start_int) + frame_start_int)
+
+        #frame_i.data.body = str(frame_update)
+        frame_i_UI.data.body = str(bpy.context.scene.frame_current)
+
+        #bpy.context.scene.frame_current = frame_update
+
+        #return frame_update
+
 
     ## UI ##########
 
@@ -3289,27 +3380,203 @@ class OpenVR(HMD_Base):
         stepper = 10.0 ** digits
         return math.trunc(stepper * number) / stepper
 
-    def update_slider(self, trans_x):
+    def update_slider(self, slide_idx, x):
 
-        slider = bpy.data.objects["slider"]
-        slider_start = bpy.data.objects["slider_start"]
-        slider_end = bpy.data.objects["slider_end"]
+        slider_pin = bpy.data.objects["slider_pin_"+str(slide_idx)]
+        slider = bpy.data.objects["slider_"+str(slide_idx)]
 
-        trans = slider_end.location - slider_start.location
+        value = bpy.data.objects["value_"+str(slide_idx)]
 
-        new_loc = slider_start.location + trans / 2 + trans_x * (trans / 2)
-        slider.location = new_loc
+        trunc = 0
 
-        value_1 = 0
-        value_2 = 100
+        # scale = d/find_distance(minus.location,plus.location)
 
-        full_length = self.find_distance(slider_end.location, slider_start.location)
-        short_lenght = self.find_distance(slider_start.location, new_loc)
+        #scale = d
+        if(x > 1):
+            x = 1
+        if (x < -1):
+            x = -1
 
-        value_i = (short_lenght / full_length) * (value_2 - value_1)
+        #scale = (plus.location.x - x)/(plus.location.x - minus.location.x)
 
-        bpy.data.objects["slider_value"].data.body = str(self.truncate(value_i, 3))
-        # bpy.data.objects["slider_value"].data.body = str(value_i)
+        slider_pin.location.x = slider.location.x + x
+
+        if(slide_idx == 0):
+            #min_value = 0.001
+            min_value = float(self.my_file[1])
+            #max_value = 1
+            max_value = float(self.my_file[3])
+            trunc = 3
+            value_i = 10 ** (log(min_value, 10) + ((1 + x) / 2) * (log(max_value, 10) - log(min_value, 10)))
+            value_i = self.truncate(value_i, trunc)
+
+        elif(slide_idx == 1):
+            # min_value = 1
+            min_value = float(self.my_file[5])
+            # max_value = 10
+            max_value = float(self.my_file[7])
+            trunc = 3
+            value_i = 10 ** (log(min_value, 10) + ((1 + x) / 2) * (log(max_value, 10) - log(min_value, 10)))
+            value_i = self.truncate(value_i, trunc)
+
+        elif(slide_idx == 2):
+            # min_value = 1
+            min_value = float(self.my_file[9])
+            # max_value = 10
+            max_value = float(self.my_file[11])
+            trunc = 3
+            value_i = 10 ** (log(min_value, 10) + ((1 + x) / 2) * (log(max_value, 10) - log(min_value, 10)))
+            value_i = self.truncate(value_i, trunc)
+
+        elif(slide_idx == 3):
+            # min_value = 1
+            min_value = float(self.my_file[13])
+            # max_value = 10
+            max_value = float(self.my_file[15])
+            trunc = 3
+            value_i = 10 ** (log(min_value, 10) + ((1 + x) / 2) * (log(max_value, 10) - log(min_value, 10)))
+            value_i = self.truncate(value_i, trunc)
+
+        elif(slide_idx == 4):
+            # min_value = 1
+            min_value = float(self.my_file[17])
+            # max_value = 10
+            max_value = float(self.my_file[19])
+            trunc = 3
+            value_i = 10 ** (log(min_value, 10) + ((1 + x) / 2) * (log(max_value, 10) - log(min_value, 10)))
+            value_i = self.truncate(value_i, trunc)
+
+        elif(slide_idx == 5):
+            #min_value = 1
+            min_value = int(self.my_file[21])
+            #max_value = 10
+            max_value = int(self.my_file[23])
+            value_i = min_value + round( ((1 + x) / 2) * (max_value - min_value) )
+
+        else:
+            #min_value = 0.001
+            min_value = float(self.my_file[5])
+            #max_value = 100
+            max_value = float(self.my_file[7])
+            trunc = 3
+            value_i = 10 ** (log(min_value, 10) + ((1 + x) / 2) * (log(max_value, 10) - log(min_value, 10)))
+            value_i = self.truncate(value_i, trunc)
+
+
+
+        if(slide_idx == 0):
+            bpy.data.curves['Stroke'].bevel_depth = value_i
+
+            # SCALE PINS AND ARROWS
+            resize = value_i / 0.2572
+            k = 0
+            for b in self.beziere_list:
+                pin = bpy.data.objects["Pin_stroke"+str(k)]
+                pin.scale = (resize, resize, resize)
+                arrow = bpy.data.objects["arrow_" + str(k)]
+                arrow.scale = (resize, resize, resize)
+                k+=1
+
+        value.data.body = str(value_i)
+
+
+
+
+        ############ OLD
+
+        # slider = bpy.data.objects["slider"]
+        # slider_start = bpy.data.objects["slider_start"]
+        # slider_end = bpy.data.objects["slider_end"]
+        #
+        # trans = slider_end.location - slider_start.location
+        #
+        # new_loc = slider_start.location + trans / 2 + trans_x * (trans / 2)
+        # slider.location = new_loc
+        #
+        # value_1 = 0
+        # value_2 = 100
+        #
+        # full_length = self.find_distance(slider_end.location, slider_start.location)
+        # short_lenght = self.find_distance(slider_start.location, new_loc)
+        #
+        # value_i = (short_lenght / full_length) * (value_2 - value_1)
+        #
+        # bpy.data.objects["slider_value"].data.body = str(self.truncate(value_i, 3))
+        # # bpy.data.objects["slider_value"].data.body = str(value_i)
+
+    def find_drag_state(self, ctrl_locatino):
+
+        panel = bpy.data.objects["Panel_UI"]
+        settings = bpy.data.objects["settings_handle"]
+
+        d1 = self.find_distance(ctrl_locatino, panel.location)
+        d2 = self.find_distance(ctrl_locatino, settings.location)
+
+        if(d1 > d2 and self.settings_switch):
+            return StateLeft.DRAG_SETTINGS
+        else:
+            return StateLeft.DRAG_PANEL
+
+    def find_next_state(self, ctrl_locatino):
+
+        list = []
+
+        mw1 = bpy.data.objects["Panel_UI"].matrix_world
+        mw2 = bpy.data.objects["settings_handle"].matrix_world
+
+
+        i = 0
+        while(i<6):
+
+            slider_i = bpy.data.objects["slider_pin_"+str(i)]
+            if (self.settings_switch):
+                d = self.find_distance(ctrl_locatino, mw2 * slider_i.location)
+            else:
+                d = 10**10
+            list.append(d)
+
+            i+=1
+
+
+        setting_cross = bpy.data.objects["setting_cross"]
+        if (self.settings_switch):
+            d = self.find_distance(ctrl_locatino, mw2 * setting_cross.location)
+        else:
+            d = 10**10
+        list.append(d)
+
+
+
+        shift_ob = bpy.data.objects["Full_Time_Bar"]
+        d = self.find_distance(ctrl_locatino, mw1 * shift_ob.location)
+        list.append(d)
+
+        scale_obj = bpy.data.objects["Time_Scale"]
+        d = self.find_distance(ctrl_locatino,  mw1 * scale_obj.location)
+        list.append(d)
+
+
+        d_min = 10**10
+        i=0
+        j=0
+        for d in list:
+            if d < d_min:
+                d_min = d
+                j = i
+            i+=1
+
+        if(j < 6):
+            self.slider_idx = j
+            return StateLeft.SLIDER
+        if(j == 6):
+            return StateLeft.CLOSE_SETTINGS
+        if(j == 7):
+            return StateLeft.SHIFT_TIME
+        if(j == 8):
+            return StateLeft.SCALE_TIME
+
+
+
 
 
     ###### INTERACTIONS
@@ -3470,22 +3737,27 @@ class OpenVR(HMD_Base):
         pin_start = self.stroke.data.splines[bezier_index-1].bezier_points[0].co
         pin_end = self.stroke.data.splines[bezier_index-1].bezier_points[stroke_lenght - 1].co
 
-        close_v_pos, close_v_index = self.find_closest_point(pin_start, self.my_obj)
+        close_v_pos, close_v_index, dist = self.find_closest_point(pin_start, self.my_obj)
         global v_index
         v_index = close_v_index
        # print("index: ", close_v_index,"position: ", close_v_pos)
 
+        self.stroke.data.splines[-1].bezier_points[0].co = close_v_pos
+
         shape_start_name = "Basis"
         ### hook start stroke with other end stroke
+        threshold = float(bpy.data.objects["value_4"].data.body)
         if(bezier_index > 1):
             i=0
             for bez in self.stroke.data.splines:
                 d = self.find_distance(bez.bezier_points[-1].co, pin_start)
-                if(d < 0.01 and i < len(self.stroke.data.splines) - 1):
+                if(d < threshold and i < len(self.stroke.data.splines) - 1):
                    # print("stroke hooked "+str(i)+"th")
                     self.stroke.data.splines[-1].bezier_points[0].co = bez.bezier_points[-1].co
                     close_v_index = self.main_vertex_list[i]
                     shape_start_name = self.target_list[i]
+
+                    self.stroke.data.splines[bezier_index-1].bezier_points[0].co = self.stroke.data.splines[i].bezier_points[-1].co
                 i+=1
 
 
@@ -3497,12 +3769,13 @@ class OpenVR(HMD_Base):
 
 
         stroke_lenght = len(self.stroke.data.splines[-1].bezier_points)
-        self.stroke.data.splines[-1].bezier_points[0].co = close_v_pos
-        pin_start = self.stroke.data.splines[-1].bezier_points[0].co
-        pin_end = self.stroke.data.splines[-1].bezier_points[stroke_lenght - 1].co
+        # self.stroke.data.splines[-1].bezier_points[0].co = close_v_pos
+        # pin_start = self.stroke.data.splines[-1].bezier_points[0].co
+        # pin_end = self.stroke.data.splines[-1].bezier_points[stroke_lenght - 1].co
 
         global weights
         weights = self.get_weights_by_pin(pin_end, close_v_pos, close_v_index)
+
 
         if(max(weights) > 0):
 
@@ -3595,7 +3868,7 @@ class OpenVR(HMD_Base):
             pin_start = self.stroke.data.splines[-1].bezier_points[0].co
             pin_end = self.stroke.data.splines[-1].bezier_points[stroke_lenght - 1].co
 
-            co, close_v_index = self.find_closest_point(pin_start, self.my_obj)
+            co, close_v_index, dist = self.find_closest_point(pin_start, self.my_obj)
             # print("co, close_v_index:",co, close_v_index)
 
             close_v_index = self.main_vertex_list[-1]
@@ -3832,7 +4105,7 @@ class OpenVR(HMD_Base):
         # append new bezier
         self.beziere_list.append(self.stroke.data.splines[-1])
 
-        co, close_v_index = self.find_closest_point(new_pin_start, self.my_obj)
+        co, close_v_index, dist = self.find_closest_point(new_pin_start, self.my_obj)
 
         shape_start_name = "Basis"
         ### hook start stroke with other end stroke
@@ -3962,7 +4235,7 @@ class OpenVR(HMD_Base):
         pin_start = self.stroke.data.splines[-1].bezier_points[0].co
         pin_end = self.stroke.data.splines[-1].bezier_points[stroke_lenght - 1].co
 
-        co, close_v_index = self.find_closest_point(pin_start, self.my_obj)
+        co, close_v_index, dist = self.find_closest_point(pin_start, self.my_obj)
         #print("co, close_v_index:",co, close_v_index)
 
         close_v_index = self.main_vertex_list[-1]
@@ -4216,10 +4489,14 @@ class OpenVR(HMD_Base):
                     if(self.allow_draw):
                         print("IDLE -> DRAWING")
 
-                        self.stroke.data.bevel_depth = self.find_box_diag(self.my_obj) / 650.9033696033151
+                        #self.stroke.data.bevel_depth = self.find_box_diag(self.my_obj) / 650.9033696033151
 
-                        co, indx = self.find_closest_point(bpy.data.objects['Controller.R'].location, self.my_obj)
-                        self.display_pins(indx)
+                        co, indx, dist = self.find_closest_point(bpy.data.objects['Controller.R'].location, self.my_obj)
+
+                        # PEN DISTANCE MIN
+                        threshold = float(bpy.data.objects["value_2"].data.body)
+                        if (dist < threshold):
+                            self.display_pins(indx)
 
                         global startTime
                         startTime = time.time()
@@ -4611,20 +4888,25 @@ class OpenVR(HMD_Base):
                     # self.changeSelection(self.objToControll_l, self.boneToControll_l, False)
                     # self.state_l = StateLeft.DECISIONAL
 
-                    mw = bpy.data.objects["Panel_UI"].matrix_world
+                    NEXT_STATE = self.find_next_state(ctrl_l.location)
 
-                    shift_ob = bpy.data.objects["Full_Time_Bar"]
-                    scale_obj = bpy.data.objects["Time_Scale"]
+                    # mw = bpy.data.objects["Panel_UI"].matrix_world
+                    #
+                    # shift_ob = bpy.data.objects["Full_Time_Bar"]
+                    # scale_obj = bpy.data.objects["Time_Scale"]
+                    #
+                    # d1 = self.find_distance(ctrl_l.location, mw * shift_ob.location)
+                    # d2 = self.find_distance(ctrl_l.location, mw * scale_obj.location)
+                    #
+                    # if(d1 <= d2):
+                    #     print("IDLE -> SHIFT_TIME")
+                    #     self.state_l = StateLeft.SHIFT_TIME
+                    # else:
+                    #     print("IDLE -> SCALE_TIME")
+                    #     self.state_l = StateLeft.SCALE_TIME
 
-                    d1 = self.find_distance(ctrl_l.location, mw * shift_ob.location)
-                    d2 = self.find_distance(ctrl_l.location, mw * scale_obj.location)
 
-                    if(d1 <= d2):
-                        print("IDLE -> SHIFT_TIME")
-                        self.state_l = StateLeft.SHIFT_TIME
-                    else:
-                        print("IDLE -> SCALE_TIME")
-                        self.state_l = StateLeft.SCALE_TIME
+                    self.state_l = NEXT_STATE
 
                 # INTERACTION_LOCAL
                 if (ctrl_state_l.ulButtonPressed == 8589934592 and self.objToControll_l != ""):
@@ -4659,8 +4941,11 @@ class OpenVR(HMD_Base):
                 # DRAG PANEL
                 if ctrl_state_l.ulButtonPressed == 4:
                     print("IDEAL -> DRAG_PANEL")
-                    bpy.data.objects["Text.L"].data.body = "Drag Panel"
-                    self.state_l = StateLeft.DRAG_PANEL
+
+                    NEXT_STATE = self.find_drag_state(ctrl_l.location)
+
+                    bpy.data.objects["Text.L"].data.body = "Drag"
+                    self.state_l = NEXT_STATE
 
             elif self.state_l == StateLeft.TRACKPAD_BUTTON_DOWN:
 
@@ -4715,14 +5000,34 @@ class OpenVR(HMD_Base):
                         # if(thread_is_done):
                         #     self.my_second_execute()
                             #bpy.ops.screen.animation_play()
-                        print("IDLE -> THRESHOLD")
-                        self.state_l = StateLeft.THRESHOLD
-                        bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-threshold.png"]
+                        # print("IDLE -> THRESHOLD")
+                        # self.state_l = StateLeft.THRESHOLD
+                        # bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-threshold.png"]
+                        #
+                        # # SHOW SLIDER
+                        # bpy.data.objects["slider"].hide = False
+                        # bpy.data.objects["slider_bar"].hide = False
+                        # bpy.data.objects["slider_value"].hide = False
 
-                        # SHOW SLIDER
-                        bpy.data.objects["slider"].hide = False
-                        bpy.data.objects["slider_bar"].hide = False
-                        bpy.data.objects["slider_value"].hide = False
+                        #SHOW SETTINGS
+                        if(self.settings_switch == False):
+                            i = 0
+                            while (i < 6):
+                                bpy.data.objects["slider_" + str(i)].hide = False
+                                bpy.data.objects["slider_pin_" + str(i)].hide = False
+                                bpy.data.objects["slider_text_" + str(i)].hide = False
+                                bpy.data.objects["value_" + str(i)].hide = False
+                                i += 1
+                            bpy.data.objects["setting_cross"].hide = False
+
+                            settings = bpy.data.objects["settings_handle"]
+                            Empty = bpy.data.objects["Panel_empty"]
+                            settings.matrix_world = Empty.matrix_world
+
+                            self.settings_switch = True
+                        else:
+                            print("CLOSE_SETTINGS")
+                            self.state_l = StateLeft.CLOSE_SETTINGS
 
             elif self.state_l == StateLeft.INTERACTION_LOCAL:
                 bpy.data.objects["Text.L"].data.body = "Interaction\n" + self.objToControll_l + "-" + self.boneToControll_l + "\n" + self.axes[self.curr_axes_l]
@@ -4962,6 +5267,24 @@ class OpenVR(HMD_Base):
                     print ("SCALE_TIME -> IDLE")
                     bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-idle.png"]
 
+            elif self.state_l == StateLeft.CLOSE_SETTINGS:
+
+                self.settings_switch = False
+
+                i = 0
+                while (i < 6):
+                    bpy.data.objects["slider_" + str(i)].hide = True
+                    bpy.data.objects["slider_pin_" + str(i)].hide = True
+                    bpy.data.objects["slider_text_" + str(i)].hide = True
+                    bpy.data.objects["value_" + str(i)].hide = True
+                    i += 1
+                bpy.data.objects["setting_cross"].hide = True
+
+                if ctrl_state_l.ulButtonPressed != 8589934592:
+                    self.state_l = StateLeft.IDLE
+                    print("CLOSE_SETTINGS -> IDLE")
+                    bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-idle.png"]
+
             elif self.state_l == StateLeft.TIMELINE_ENTER:
 
                 Panel_UI = bpy.data.objects["Panel_UI"]
@@ -4990,31 +5313,44 @@ class OpenVR(HMD_Base):
 
                     # TIMELINE EXIT
                     if(y < -0.5):
-                        bpy.data.objects["Timeline"].hide = True
-                        bpy.data.objects["End_frame"].hide = True
-                        bpy.data.objects["End_frame_bar"].hide = True
-                        bpy.data.objects["Frame_bar"].hide = True
-                        bpy.data.objects["Frame_i"].hide = True
-                        bpy.data.objects["Start_frame"].hide = True
-                        bpy.data.objects["Start_frame_bar"].hide = True
+                        # bpy.data.objects["Timeline"].hide = True
+                        # bpy.data.objects["End_frame"].hide = True
+                        # bpy.data.objects["End_frame_bar"].hide = True
+                        # bpy.data.objects["Frame_bar"].hide = True
+                        # bpy.data.objects["Frame_i"].hide = True
+                        # bpy.data.objects["Start_frame"].hide = True
+                        # bpy.data.objects["Start_frame_bar"].hide = True
 
                         print("TIMELINE -> TIMELINE_EXIT")
                         bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-idle.png"]
                         self.state_l = StateLeft.TIMELINE_EXIT
 
-                    # START_FRAME
-                    if(x < 0 and y > -0.5):
-                        self.next_state_l = StateLeft.START_FRAME
-                    # END_FRAME
-                    if(x > 0 and y > -0.5):
-                        self.next_state_l = StateLeft.END_FRAME
+                    # # START_FRAME
+                    # if(x < 0 and y > -0.5):
+                    #     self.next_state_l = StateLeft.START_FRAME
+                    # # END_FRAME
+                    # if(x > 0 and y > -0.5):
+                    #     self.next_state_l = StateLeft.END_FRAME
 
-
+                    if(y > 0.5):
+                        self.next_state_l = StateLeft.TIMELINE_PLAY
 
 
                 if ctrl_state_l.ulButtonPressed != 4294967296:
 
-                     if(self.next_state_l == StateLeft.START_FRAME):
+                    if(self.next_state_l == StateLeft.TIMELINE_PLAY):
+
+                        print("TIMELINE -> TIMELINE_PLAY")
+
+                        bpy.context.scene.frame_start = int(bpy.data.objects["Frame_start_UI"].data.body)
+                        bpy.context.scene.frame_end = int(bpy.data.objects["Frame_end_UI"].data.body)
+                        bpy.ops.screen.animation_play()
+
+                        bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-timeline_play.png"]
+                        self.state_l = StateLeft.TIMELINE_PLAY
+
+
+                    if(self.next_state_l == StateLeft.START_FRAME):
 
                          bpy.data.objects["wheel"].hide = False
 
@@ -5026,7 +5362,7 @@ class OpenVR(HMD_Base):
                          bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-frames.png"]
                          bpy.data.objects["Text.L"].data.body = "Start Frame"
 
-                     if (self.next_state_l == StateLeft.END_FRAME):
+                    if (self.next_state_l == StateLeft.END_FRAME):
 
                          bpy.data.objects["wheel"].hide = False
 
@@ -5037,6 +5373,32 @@ class OpenVR(HMD_Base):
                          self.state_l = StateLeft.END_FRAME
                          bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-frames.png"]
                          bpy.data.objects["Text.L"].data.body = "End Frame"
+
+            elif self.state_l == StateLeft.TIMELINE_PLAY:
+
+                x, y = ctrl_state_l.rAxis[0].x, ctrl_state_l.rAxis[0].y
+
+                start_f = int(bpy.data.objects["Frame_start_UI"].data.body)
+                end_f = int(bpy.data.objects["Frame_end_UI"].data.body)
+                frame_current = bpy.context.scene.frame_current
+                #x = ( frame_current/(end_f - start_f) )*2 -1
+                factor = (frame_current - start_f)/(end_f - start_f)
+
+                self.play_frame(factor)
+
+                if ctrl_state_l.ulButtonPressed == 4294967296:
+                    if(True):
+                        self.next_state_l = StateLeft.TIMELINE
+
+                if ctrl_state_l.ulButtonPressed != 4294967296:
+
+                    if(self.next_state_l == StateLeft.TIMELINE):
+
+                        bpy.ops.screen.animation_cancel()
+
+                        print("TIMELINE_PLAY -> TIMELINE")
+                        bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-timeline.png"]
+                        self.state_l = StateLeft.TIMELINE
 
             elif self.state_l == StateLeft.TIMELINE_EXIT:
                 if ctrl_state_l.ulButtonPressed != 4294967296:
@@ -5204,6 +5566,35 @@ class OpenVR(HMD_Base):
                     bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-idle.png"]
                     self.state_l = StateLeft.IDLE
 
+            elif self.state_l == StateLeft.DRAG_SETTINGS:
+
+                if ctrl_state_l.ulButtonPressed == 4:
+                    settings = bpy.data.objects["settings_handle"]
+                    Empty = bpy.data.objects["Panel_empty"]
+                    # Panel_UI.location = ctrl_l.location
+                    settings.matrix_world = Empty.matrix_world
+
+                if ctrl_state_l.ulButtonPressed != 4:
+                    print("DRAG_SETTING -> IDLE")
+                    bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-idle.png"]
+                    self.state_l = StateLeft.IDLE
+
+            elif self.state_l == StateLeft.SLIDER:
+
+                scale_bar = bpy.data.objects["slider_"+str(self.slider_idx)]
+                m_w = copy.copy(scale_bar.matrix_world)
+                m_w.invert()
+                relativ_pos = m_w * ctrl_l.location
+
+                self.update_slider(self.slider_idx, relativ_pos.x)
+
+
+                if ctrl_state_l.ulButtonPressed != 8589934592:
+
+                    self.state_l = StateLeft.IDLE
+                    print("SLIDER -> IDLE")
+                    bpy.data.textures["Texture.L"].image = bpy.data.images["Hand-L-idle.png"]
+
             elif self.state_l == StateLeft.THRESHOLD:
 
                 x, y = ctrl_state_l.rAxis[0].x, ctrl_state_l.rAxis[0].y
@@ -5213,7 +5604,8 @@ class OpenVR(HMD_Base):
 
                     if(y!= 0 and x!=0):
                         if(y > -0.5):
-                            self.update_slider(x)
+                            #self.update_slider(x)
+                            print(x)
 
                 if ctrl_state_l.ulButtonPressed == 4294967296:
 
