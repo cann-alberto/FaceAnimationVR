@@ -1,0 +1,24 @@
+Stroke depth min: 
+0.001
+Stroke depth max: 
+1
+Shapekey radius min min:
+0.001
+Shapekey radius min max:
+100
+Pen distance min min:
+0.001
+Pen distance min max:
+100
+Editing radius min:
+0.001
+Editing radius max:
+100
+Hook stroke radius min:
+0.001
+Hook stroke radius max:
+100
+Time subsampling min:
+1
+Time subsampling max:
+10
